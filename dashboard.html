@@ -211,20 +211,37 @@
   async function loadDashboard() {
     try {
       const res = await API.get('dashboard');
-      if (!res.success) { showToast('ไม่สามารถโหลดข้อมูลได้', 'error'); return; }
+      if (!res.success) {
+        showToast('ไม่สามารถโหลดข้อมูลได้: ' + (res.data?.error || 'กรุณาลองใหม่'), 'error');
+        return;
+      }
       dashData = res.data;
-      renderKPIs(dashData);
-      renderTrendChart(dashData.trend);
-      renderStatusChart(dashData.summary);
-      renderSLAGauge(dashData.sla);
-      renderWorkload(dashData.workload);
-      renderTypeChart(dashData.summary.by_type);
+      try { renderKPIs(dashData); }          catch(e) { console.error('renderKPIs:', e); }
+      try { renderTrendChart(dashData.trend); } catch(e) { console.error('renderTrend:', e); }
+      try { renderStatusChart(dashData.summary); } catch(e) { console.error('renderStatus:', e); }
+      try { renderSLAGauge(dashData.sla); }    catch(e) { console.error('renderSLA:', e); }
+      try { renderWorkload(dashData.workload); } catch(e) { console.error('renderWorkload:', e); }
+      try { renderTypeChart(dashData.summary.by_type); } catch(e) { console.error('renderType:', e); }
       renderRecentTickets();
-      renderAISummary(dashData.ai_summary);
       document.getElementById('summary-time').textContent = new Date().toLocaleTimeString('th-TH');
+      // Load AI summary separately — non-blocking (Groq AI is slow)
+      loadAISummary();
     } catch (e) {
-      showToast('เกิดข้อผิดพลาดในการโหลดข้อมูล', 'error');
-      console.error(e);
+      showToast('เกิดข้อผิดพลาด: ' + (e.message || 'กรุณาลองใหม่'), 'error');
+      console.error('loadDashboard error:', e);
+    }
+  }
+
+  async function loadAISummary() {
+    try {
+      const res = await API.get('dashboard/ai-summary');
+      if (res.success && res.data && res.data.ai_summary) {
+        renderAISummary(res.data.ai_summary);
+        document.getElementById('summary-time').textContent = new Date().toLocaleTimeString('th-TH');
+      }
+    } catch(e) {
+      document.getElementById('ai-summary-text').textContent = 'ไม่สามารถสร้างสรุป AI ได้ในขณะนี้';
+      console.error('loadAISummary error:', e);
     }
   }
 
@@ -418,8 +435,42 @@
     }
   }
 
-  // Auto-refresh every 5 minutes
-  setInterval(refreshDashboard, 5 * 60 * 1000);
+  // ── Auto-Refresh ─────────────────────────────────────────────
+  const REFRESH_INTERVAL_SEC  = 2 * 60;   // Main data  : every 2 min
+  const AI_REFRESH_INTERVAL_SEC = 10 * 60; // AI Summary : every 10 min
+
+  let refreshCountdown   = REFRESH_INTERVAL_SEC;
+  let aiRefreshCountdown = AI_REFRESH_INTERVAL_SEC;
+
+  // Countdown display in header (next to refresh button)
+  const countdownEl = document.createElement('span');
+  countdownEl.id    = 'refresh-countdown';
+  countdownEl.style.cssText = 'font-size:11px;color:var(--text-muted,#9aa0ac);margin-left:4px;';
+  document.getElementById('refresh-btn').insertAdjacentElement('afterend', countdownEl);
+
+  setInterval(() => {
+    refreshCountdown--;
+    aiRefreshCountdown--;
+
+    // Update countdown display
+    const m = Math.floor(refreshCountdown / 60);
+    const s = refreshCountdown % 60;
+    countdownEl.textContent = `(${m}:${String(s).padStart(2,'0')})`;
+
+    // Main data refresh
+    if (refreshCountdown <= 0) {
+      refreshCountdown = REFRESH_INTERVAL_SEC;
+      const btn = document.getElementById('refresh-btn');
+      btn.textContent = '⏳';
+      loadDashboard().then(() => { btn.textContent = '🔄'; });
+    }
+
+    // AI summary refresh (less frequent)
+    if (aiRefreshCountdown <= 0) {
+      aiRefreshCountdown = AI_REFRESH_INTERVAL_SEC;
+      loadAISummary();
+    }
+  }, 1000);
 </script>
 </body>
 </html>
