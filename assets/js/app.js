@@ -233,6 +233,42 @@ function formatDate(dt) {
   return d.toLocaleDateString('th-TH', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
+// ── Date Input Helpers (DD/MM/YYYY) — shared across all pages ─
+function formatDateInput(input) {
+  // Auto-insert slashes: dd/mm/yyyy as user types
+  let v = input.value.replace(/\D/g, '').substring(0, 8);
+  if (v.length >= 3) v = v.substring(0, 2) + '/' + v.substring(2);
+  if (v.length >= 6) v = v.substring(0, 5) + '/' + v.substring(5);
+  input.value = v;
+}
+
+function parseDDMMYYYY(str) {
+  if (!str || str.length < 8) return null;
+  const parts = str.split('/');
+  if (parts.length !== 3) return null;
+  const [d, m, y] = parts;
+  if (!d || !m || !y || y.length !== 4) return null;
+  const date = new Date(y + '-' + m.padStart(2, '0') + '-' + d.padStart(2, '0'));
+  return isNaN(date.getTime()) ? null : date;
+}
+
+function todayDDMMYYYY() {
+  const now = new Date();
+  const d = String(now.getDate()).padStart(2, '0');
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const y = now.getFullYear();
+  return d + '/' + m + '/' + y;
+}
+
+function dateToDDMMYYYY(date) {
+  if (!date) return '';
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return '';
+  return String(d.getDate()).padStart(2, '0') + '/' +
+         String(d.getMonth() + 1).padStart(2, '0') + '/' +
+         d.getFullYear();
+}
+
 function timeAgo(dt) {
   if (!dt) return '';
   const diff = Date.now() - new Date(dt).getTime();
