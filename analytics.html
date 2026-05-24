@@ -31,22 +31,46 @@
 
     /* ── Flatpickr Overrides ───────────────────────────────── */
     .flatpickr-input { cursor:pointer; }
-    .flatpickr-day.today { border-color:var(--primary) !important; color:var(--primary) !important; font-weight:700; }
-    .flatpickr-day.today:hover,
-    .flatpickr-day.today.selected { background:var(--primary) !important; color:#fff !important; border-color:var(--primary) !important; }
-    .flatpickr-day.selected,
-    .flatpickr-day.selected:hover { background:var(--primary) !important; border-color:var(--primary) !important; }
+
+    /* Header bar (month + year area) */
     .flatpickr-months .flatpickr-month,
     .flatpickr-current-month,
     .flatpickr-weekdays { background:var(--primary) !important; }
-    .flatpickr-weekday { color:#fff !important; }
-    .flatpickr-current-month .flatpickr-monthDropdown-months,
-    .flatpickr-current-month input.cur-year { color:#fff !important; }
-    .numInputWrapper:hover { background:rgba(255,255,255,.1) !important; }
-    [data-theme="dark"] .flatpickr-calendar { background:var(--surface) !important; border-color:var(--border) !important; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+    .flatpickr-weekday { color:#fff !important; font-weight:600; }
+
+    /* Month/year text — white on blue header */
+    .flatpickr-current-month .flatpickr-month-name,
+    .flatpickr-current-month input.cur-year,
+    .flatpickr-current-month span.cur-month { color:#fff !important; }
+
+    /* Month dropdown option text — dark so it's readable when list opens */
+    .flatpickr-monthDropdown-months { color:#333 !important; background:#fff !important; }
+    .flatpickr-monthDropdown-months option { color:#333 !important; background:#fff !important; }
+
+    /* Nav arrows */
+    .flatpickr-prev-month svg, .flatpickr-next-month svg { fill:#fff !important; }
+    .flatpickr-prev-month:hover svg, .flatpickr-next-month:hover svg { fill:#fff !important; }
+    .numInputWrapper:hover { background:rgba(255,255,255,.15) !important; }
+    .cur-year { font-weight:700; }
+
+    /* Today highlight */
+    .flatpickr-day.today { border-color:var(--primary) !important; color:var(--primary) !important; font-weight:800; }
+    .flatpickr-day.today:hover { background:var(--primary) !important; color:#fff !important; border-color:var(--primary) !important; }
+
+    /* Selected day */
+    .flatpickr-day.selected,
+    .flatpickr-day.selected:hover,
+    .flatpickr-day.today.selected { background:var(--primary) !important; border-color:var(--primary) !important; color:#fff !important; font-weight:700; }
+
+    /* Dark mode */
+    [data-theme="dark"] .flatpickr-calendar { background:var(--surface) !important; border-color:var(--border) !important; box-shadow:0 8px 24px rgba(0,0,0,.5); }
     [data-theme="dark"] .flatpickr-day { color:var(--text-primary) !important; }
     [data-theme="dark"] .flatpickr-day:hover { background:var(--surface-alt) !important; }
-    [data-theme="dark"] .flatpickr-day.flatpickr-disabled { color:var(--text-muted) !important; }
+    [data-theme="dark"] .flatpickr-day.flatpickr-disabled,
+    [data-theme="dark"] .flatpickr-day.prevMonthDay,
+    [data-theme="dark"] .flatpickr-day.nextMonthDay { color:var(--text-muted) !important; }
+    [data-theme="dark"] .flatpickr-monthDropdown-months,
+    [data-theme="dark"] .flatpickr-monthDropdown-months option { color:#fff !important; background:var(--surface-alt) !important; }
   </style>
 </head>
 <body>
@@ -293,18 +317,21 @@
 
   // ── Flatpickr Date Pickers ──────────────────────────────────
   let _fpFrom, _fpTo;
-  (function initDatePickers() {
-    const opts = {
-      dateFormat:          'd/m/Y',
-      locale:              'th',
-      allowInput:          true,
-      disableMobile:       false,
-      monthSelectorType:   'dropdown',
-      showMonths:          1
+  try {
+    const fpOpts = {
+      dateFormat:        'd/m/Y',
+      locale:            (typeof flatpickr !== 'undefined' && flatpickr.l10ns && flatpickr.l10ns.th) ? 'th' : 'default',
+      allowInput:        true,
+      disableMobile:     false,
+      monthSelectorType: 'static'   // ใช้ลูกศร ← → แทน dropdown เพื่อป้องกันปัญหาสีข้อความ
     };
-    _fpFrom = flatpickr('#date-from', opts);
-    _fpTo   = flatpickr('#date-to',   opts);
-  })();
+    _fpFrom = flatpickr('#date-from', fpOpts);
+    _fpTo   = flatpickr('#date-to',   fpOpts);
+  } catch(fpErr) {
+    console.warn('[Flatpickr] init failed, falling back to text input:', fpErr);
+    _fpFrom = null;
+    _fpTo   = null;
+  }
 
   google.charts.load('current', { packages: ['corechart','bar','gauge','table'] });
   google.charts.setOnLoadCallback(() => {
@@ -328,56 +355,74 @@
 
   async function loadAnalytics() {
     showLoader('กำลังวิเคราะห์ข้อมูล...');
+
+    // ── STAGE 1: Fetch APIs (allSettled = ไม่มีทาง throw) ───────
+    let aRes = { success: false }, tRes = { success: false }, kbRes = { success: false };
     try {
-      // ── ใช้ allSettled แทน all เพื่อให้ 1 call fail ไม่กระทบส่วนอื่น ──
-      const [aSettled, tSettled, kbSettled] = await Promise.allSettled([
+      const ticketEndpoint = (typeof isITStaff === 'function' && isITStaff()) ? 'tickets' : 'tickets/my';
+      const [aS, tS, kbS] = await Promise.allSettled([
         API.get('analytics'),
-        isITStaff() ? API.get('tickets') : API.get('tickets/my'),
+        API.get(ticketEndpoint),
         API.get('kb')
       ]);
 
-      const aRes  = aSettled.status  === 'fulfilled' ? aSettled.value  : { success: false };
-      const tRes  = tSettled.status  === 'fulfilled' ? tSettled.value  : { success: false };
-      const kbRes = kbSettled.status === 'fulfilled' ? kbSettled.value : { success: false };
+      if (aS.status  === 'fulfilled' && aS.value  != null) { aRes  = aS.value;  }
+      else { console.error('[analytics] fetch failed:', aS.status === 'rejected' ? aS.reason : 'null/undefined response'); }
 
-      // ── Log error รายอันเพื่อ debug ───────────────────────────
-      if (aSettled.status  === 'rejected') console.error('[analytics] API error:',  aSettled.reason);
-      if (tSettled.status  === 'rejected') console.error('[tickets]   API error:',  tSettled.reason);
-      if (kbSettled.status === 'rejected') console.error('[kb]        API error:',  kbSettled.reason);
+      if (tS.status  === 'fulfilled' && tS.value  != null) { tRes  = tS.value;  }
+      else { console.error('[tickets]   fetch failed:', tS.status === 'rejected' ? tS.reason : 'null/undefined response'); }
 
-      if (!aRes.success) {
-        showToast('ไม่มีสิทธิ์ดู Analytics หรือเกิดข้อผิดพลาดจาก Server', 'error');
-        console.error('analytics response:', aRes);
-        return;
-      }
+      if (kbS.status === 'fulfilled' && kbS.value != null) { kbRes = kbS.value; }
+      else { console.error('[kb]        fetch failed:', kbS.status === 'rejected' ? kbS.reason : 'null/undefined response'); }
 
-      analyticsData = aRes.data || {};
-      allTickets    = tRes.success ? (tRes.data || []) : [];
+    } catch(fetchErr) {
+      // allSettled ไม่ควร throw แต่ห่อ try/catch ไว้กันพลาด
+      console.error('[loadAnalytics] STAGE 1 unexpected error:', fetchErr);
+    }
 
-      // ── Date filter พร้อม null/invalid-Date guard ─────────────
-      const df = parseDDMMYYYY(document.getElementById('date-from').value);
-      const dt = parseDDMMYYYY(document.getElementById('date-to').value);
-      const dtMax = (dt instanceof Date && !isNaN(dt)) ? dt.getTime() + 86399999 : null;
-      const dfMs  = (df instanceof Date && !isNaN(df)) ? df.getTime()            : null;
+    // ── STAGE 2: Check analytics permission ─────────────────────
+    if (aRes.success !== true) {
+      hideLoader();
+      showToast('ไม่มีสิทธิ์ดู Analytics หรือเกิดข้อผิดพลาดจาก Server', 'error');
+      console.error('[analytics] aRes:', JSON.stringify(aRes));
+      return;
+    }
+
+    // ── STAGE 3: Process data ────────────────────────────────────
+    try {
+      analyticsData = (aRes.data != null) ? aRes.data : {};
+      allTickets    = (tRes.success === true && Array.isArray(tRes.data)) ? tRes.data : [];
+
+      const dfEl = document.getElementById('date-from');
+      const dtEl = document.getElementById('date-to');
+      const df   = dfEl ? parseDDMMYYYY(dfEl.value) : null;
+      const dt   = dtEl ? parseDDMMYYYY(dtEl.value) : null;
+      const dfMs  = (df instanceof Date && !isNaN(df.getTime())) ? df.getTime()            : null;
+      const dtMax = (dt instanceof Date && !isNaN(dt.getTime())) ? dt.getTime() + 86399999 : null;
 
       const filtered = allTickets.filter(t => {
-        if (!t.created_at) return true;
+        if (!t || !t.created_at) return true;
         const d = new Date(t.created_at);
         if (isNaN(d.getTime())) return true;
         const ms = d.getTime();
         return (dfMs === null || ms >= dfMs) && (dtMax === null || ms <= dtMax);
       });
 
-      try { renderOverview(filtered, analyticsData); }                              catch(e) { console.error('renderOverview error:', e); }
-      try { renderSLASection(filtered); }                                            catch(e) { console.error('renderSLASection error:', e); }
-      try { renderTeamSection(filtered); }                                           catch(e) { console.error('renderTeamSection error:', e); }
-      try { renderAISection(analyticsData, kbRes.success ? (kbRes.data || []) : []); } catch(e) { console.error('renderAISection error:', e); }
-      try { await renderExecutiveSection(filtered, analyticsData); }                catch(e) { console.error('renderExecutiveSection error:', e); }
+      const kbData = (kbRes.success === true && Array.isArray(kbRes.data)) ? kbRes.data : [];
 
-    } catch(e) {
+      // ── STAGE 4: Render ────────────────────────────────────────
+      try { renderOverview(filtered, analyticsData); }             catch(e) { console.error('[renderOverview]',         e); }
+      try { renderSLASection(filtered); }                          catch(e) { console.error('[renderSLASection]',       e); }
+      try { renderTeamSection(filtered); }                         catch(e) { console.error('[renderTeamSection]',      e); }
+      try { renderAISection(analyticsData, kbData); }              catch(e) { console.error('[renderAISection]',        e); }
+      try { await renderExecutiveSection(filtered, analyticsData); } catch(e) { console.error('[renderExecutiveSection]', e); }
+
+    } catch(processErr) {
       showToast('ไม่สามารถโหลดข้อมูล Analytics ได้ กรุณาลองใหม่', 'error');
-      console.error('loadAnalytics error:', e);
-    } finally { hideLoader(); }
+      console.error('[loadAnalytics] STAGE 3 processing error:', processErr, processErr?.stack);
+    } finally {
+      hideLoader();
+    }
   }
 
   // ── Section Switcher ────────────────────────────────────────
