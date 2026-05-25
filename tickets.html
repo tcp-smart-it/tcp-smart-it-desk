@@ -16,6 +16,10 @@
     .chat-input-area { display:flex;gap:8px;margin-top:12px; }
     .attachment-list { display:flex;flex-wrap:wrap;gap:8px;margin-top:8px; }
     .attachment-item { padding:4px 10px;background:var(--surface-alt);border-radius:4px;font-size:12px;display:flex;align-items:center;gap:6px; }
+    .attachment-thumb-link { display:inline-block;text-decoration:none;text-align:center; }
+    .attachment-thumb { width:90px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);display:block;transition:opacity .2s; }
+    .attachment-thumb:hover { opacity:.8; }
+    .attachment-thumb-label { font-size:11px;color:var(--text-muted);margin-top:4px; }
     .similar-ticket { padding:10px;background:var(--surface-alt);border-radius:8px;margin-bottom:8px;cursor:pointer; }
     .similar-ticket:hover { background:var(--border); }
     .score-stars { display:flex;gap:4px;font-size:24px;cursor:pointer; }
@@ -673,13 +677,27 @@
       document.getElementById('detail-ai-suggestion').textContent = t.ai_suggested_solution;
     }
 
-    // Attachments
-    const urls = typeof t.attachment_urls === 'string' ? JSON.parse(t.attachment_urls||'[]') : (t.attachment_urls||[]);
+    // Attachments — [Feat] แสดงรูปภาพจาก Google Drive แทน text link
+    const urls = typeof t.attachment_urls === 'string'
+      ? JSON.parse(t.attachment_urls || '[]')
+      : (t.attachment_urls || []);
+    const attachSection = document.getElementById('attachments-section');
+    const attachContainer = document.getElementById('detail-attachments');
     if (urls.length) {
-      document.getElementById('attachments-section').style.display = 'block';
-      document.getElementById('detail-attachments').innerHTML = urls.map((u,i) =>
-        `<a href="${u}" target="_blank" class="attachment-item">📎 ไฟล์แนบ ${i+1}</a>`
-      ).join('');
+      attachSection.style.display = 'block';
+      attachContainer.innerHTML = urls.map((u, i) => `
+        <a href="${u}" target="_blank" class="attachment-thumb-link" title="ดูรูปเต็ม">
+          <img
+            src="${u}"
+            alt="รูปแนบ ${i+1}"
+            class="attachment-thumb"
+            onerror="this.closest('a').innerHTML='<span class=\\'attachment-item\\'>📎 ไฟล์แนบ ${i+1}</span>'"
+          />
+          <div class="attachment-thumb-label">รูป ${i+1}</div>
+        </a>
+      `).join('');
+    } else {
+      attachSection.style.display = 'none';
     }
 
     // IT Panel
